@@ -93,16 +93,16 @@ ifneq ($(USE_PREBUILT_KERNEL), true)
 TARGET_KERNEL_ADDITIONAL_FLAGS := CONFIG_OPLUS_DEVICE_DTBS=y
 TARGET_KERNEL_CONFIG := \
     gki_defconfig \
-    vendor/pineapple_GKI.config \
-    vendor/oplus/pineapple_GKI.config
+    vendor/canoe_perf.config \
+    vendor/oplus/canoe_perf.config
 
 # Kernel modules
-BOARD_SYSTEM_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.system_dlkm.list.msm.pineapple))
-BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(TARGET_KERNEL_SOURCE)/modules.vendor_blocklist.msm.pineapple
-BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.vendor_dlkm.list.msm.pineapple $(TARGET_KERNEL_SOURCE)/modules.vendor_dlkm.list.oplus.pineapple))
+BOARD_SYSTEM_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.system_dlkm.list.msm.canoe))
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(TARGET_KERNEL_SOURCE)/modules.vendor_blocklist.msm.canoe
+BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.vendor_dlkm.list.msm.canoe $(TARGET_KERNEL_SOURCE)/modules.vendor_dlkm.list.oplus.canoe))
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := $(BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.vendor_boot.list.msm.pineapple $(TARGET_KERNEL_SOURCE)/modules.vendor_boot.list.oplus.pineapple))
-BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.recovery.list.msm.pineapple $(TARGET_KERNEL_SOURCE)/modules.recovery.list.oplus.pineapple))
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.vendor_boot.list.msm.canoe $(TARGET_KERNEL_SOURCE)/modules.vendor_boot.list.oplus.canoe))
+BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.recovery.list.msm.canoe $(TARGET_KERNEL_SOURCE)/modules.recovery.list.oplus.canoe))
 BOOT_KERNEL_MODULES := $(BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD)
 SYSTEM_KERNEL_MODULES := $(BOARD_SYSTEM_KERNEL_MODULES_LOAD)
 
@@ -216,7 +216,11 @@ BOOT_SECURITY_PATCH := 2026-05-01
 VENDOR_SECURITY_PATCH := $(BOOT_SECURITY_PATCH)
 
 # SEPolicy
-include device/qcom/sepolicy_vndr/sm8850/SEPolicy.mk
+# jm2: org includes the (absent-in-our-tree) root device/qcom/sepolicy_vndr/SEPolicy.mk.
+# Our sepolicy is checked out per-SoC (.../sm8850); the qcom-caf common pickup is the real
+# dispatcher — it maps canoe (UM_6_12) -> sm8850/SEPolicy.mk AND pulls in
+# device/lineage/sepolicy/qcom (which declares hal_lineage_livedisplay_qti et al.).
+include hardware/qcom-caf/common/os_pickup_sepolicy_vndr.mk
 include hardware/oplus/sepolicy/qti/SEPolicy.mk
 
 # Verified Boot
