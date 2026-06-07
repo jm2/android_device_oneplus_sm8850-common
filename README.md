@@ -226,6 +226,49 @@ the OEM v3 prebuilts via `proprietary-files.txt`. `common.mk` inherits the canoe
 configs (`sku_$(DEVICE_SKU)`) from the org base. The sun-era `sku_sun`/`configs/sun`
 references are gone.
 
+## eSIM LPA (OpenEUICC)
+
+**Problem (no-GMS build):** the stock eSIM stack provides no working LPA here.
+- `EuiccGoogle` (`com.google.android.euicc`) is the ONLY app declaring
+  `android.service.euicc.EuiccService`, but it's a **proprietary blob** (extracted via
+  `proprietary-files.txt` → `vendor/oneplus/infiniti/proprietary/product/priv-app/EuiccGoogle`)
+  that **hard-requires a `TRANSPORT_WIFI` network** for downloads (rejects VPN / ethernet /
+  USB reverse-tether).
+- LineageOS's **`EuiccPolicy`** app (`org.lineageos.euicc`, built from `packages/apps/EuiccPolicy`
+  — the "EuiccDisabler") **disables EuiccGoogle whenever GMS is absent**
+  (`EUICC_DEPENDENCIES = com.google.android.gms`). No GMS → it kills the only LPA → the telephony
+  `EuiccConnector` sits in `UnavailableState` → the Settings SIM/eSIM menu is completely dead.
+
+**Fix — ship OpenEUICC** (`im.angry.openeuicc`): the GMS-free, privileged `system_ext` LPA
+(estkme upstream). No GMS, no WiFi-transport gate; reaches the eUICC via `TelephonyManager`.
+- `PRODUCT_PACKAGES += OpenEUICC` (this `common.mk`, eSIM block). EuiccDisabler is OpenEUICC-safe
+  (it only manages `com.google.android.euicc`), so it keeps EuiccGoogle disabled and OpenEUICC
+  becomes the sole active `EuiccService`.
+- Source is **not** in the LineageOS manifest — manually cloned into the tree (repo ignores
+  untracked dirs): `packages/apps/OpenEUICC` (estkme-group/OpenEUICC `master`, +lpac/cJSON
+  submodules) and `prebuilts/openeuicc-deps` (`PeterCxy/android_prebuilts_openeuicc-deps` on
+  **gitea.angry.im** — the datastore + zxing AARs the build needs; the estkme-group GitHub mirror
+  does NOT carry the deps repo). **local_manifest recipe** for a reproducible clean re-sync:
+  `<remote name="angry" fetch="https://gitea.angry.im/"/>`; project `estkme-group/OpenEUICC`
+  (remote `github`) path `packages/apps/OpenEUICC` revision `refs/heads/master` **`sync-s="true"`**
+  (submodules!); project `PeterCxy/android_prebuilts_openeuicc-deps` (remote `angry`) path
+  `prebuilts/openeuicc-deps`.
+- Build: `m OpenEUICC` compiles clean against LOS 23.2 / Android 16. Build-env gotchas:
+  `unalias -a; unset -f grep` first (the dev shell wraps `grep`→`ugrep`, which breaks `lunch`
+  release-config parsing → empty `TARGET_PRODUCT`); use the `lineage_infiniti-bp4a-userdebug`
+  combo; `export BOARD_PREBUILT_KERNEL=true` (else source-kernel module rules collide with the
+  prebuilts → `multiple rules generate msm_kgsl.ko` at ninja-gen).
+- Runtime deploy (test without a full reflash): `adb remount` (overlayfs; userdebug + AVB off) →
+  push `OpenEUICC.apk`, the privapp whitelist, and a **real** `lib/arm64/liblpac-jni.so` (the build
+  installs the app's jni lib as a SYMLINK→`/system_ext/lib64`; push an actual copy or
+  `loadLibrary` fails) into `/system_ext/...`, `restorecon`, reboot. Survives reboot, NOT a
+  reflash (`PRODUCT_PACKAGES` covers reflash). Verified: `EuiccConnector=ConnectedState` bound to
+  `OpenEuiccService`, lpac loads, eUICC read OK (empty profile list).
+
+**Status:** menu + LPA fully functional. Profile **provisioning is blocked at the on-chip write**
+(eUICC `SW=6A88` at `LoadBoundProfilePackage`) — see `kernel/oneplus/sm8850-modules/DEFERRED_FOLLOWUPS.md`
+("eSIM provisioning fails at LoadBoundProfilePackage"). High-priority follow-up after kernel + WiFi.
+
 ## Hybrid module set (post-Phase F)
 
 | What | Where it comes from |

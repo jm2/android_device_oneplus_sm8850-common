@@ -396,6 +396,16 @@ PRODUCT_COPY_FILES += \
 $(call inherit-product, hardware/oplus/oplus-fwk/oplus-fwk.mk)
 endif
 
+# eSIM: GMS-free LPA (OpenEUICC). The shipped EuiccPolicy/EuiccDisabler disables the
+# proprietary EuiccGoogle on no-GMS builds (and EuiccGoogle also hard-requires a WiFi
+# transport, rejecting VPN/ethernet), which would otherwise leave the device with NO
+# eSIM LPA. OpenEUICC (im.angry.openeuicc, privileged, system_ext) provides a GMS-free
+# EuiccService with no transport gate, talking to the eUICC via TelephonyManager.
+# Source: packages/apps/OpenEUICC (estkme upstream, +lpac/cJSON submodules) and
+# prebuilts/openeuicc-deps. EuiccDisabler is OpenEUICC-safe (only manages com.google.android.euicc).
+PRODUCT_PACKAGES += \
+    OpenEUICC
+
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml
 
