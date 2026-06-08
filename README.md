@@ -36,6 +36,15 @@ describes the **kernel/dtb** build is orthogonal to the convergence and still cu
 
 ## What this fork carries (kernel build)
 
+> **Update 2026-06-08 — the source kernel pivoted to OEM Kleaf and now BUILDS.** The source-kernel
+> path moved off hand-translated Kbuild (system clang 22 + the genksyms/KCPPFLAGS hacks listed below)
+> to the OEM **Kleaf** `canoe_perf` build — `oplus_build_kernel.sh canoe perf` → **RC=0**, producing
+> Image + vmlinux + boot.img + 449 `.ko` + canoe DTBs with the matching **clang-r536225**. This
+> dissolves the KMI-skew that blocked the Kbuild route. Full record:
+> `kernel/oneplus/sm8850-modules/KLEAF_PIVOT.md`. The Kbuild-era notes below are kept as historical
+> record but are **superseded**. Working default stays `USE_PREBUILT_KERNEL=true` (prebuilt; device
+> boots today) until the source kernel is wired + flash-verified (cnss2 WiFi MAC patch pending).
+
 The kernel-build configuration needed to drive the source-built kernel + hybrid
 prebuilt module set. In commit order on the original tree:
 
