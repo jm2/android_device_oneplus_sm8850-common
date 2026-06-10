@@ -50,6 +50,20 @@ STOCK_MODULES_DIR="${STOCK_MODULES_DIR:-/run/media/jmulesa/lineage/android/linea
 unalias -a 2>/dev/null || true
 unset -f grep egrep fgrep 2>/dev/null || true
 
+# Sanitize the Android build environment: under brunch, lunch's exports flip
+# prepare_vendor.sh into Android-integration mode — ANDROID_BUILD_TOP re-roots
+# its out dirs, makes it write device/qcom/<plat>-kernel into the ROM tree,
+# link techpack .bzl files from it, and attempt the abl/edk2 bazel target
+# (absent from this drop → hard error). The validated configuration is the
+# STANDALONE one; replicate it regardless of caller environment.
+unset ANDROID_BUILD_TOP ANDROID_PRODUCT_OUT ANDROID_HOST_OUT ANDROID_SOONG_HOST_OUT \
+      ANDROID_HOST_OUT_TESTCASES ANDROID_TARGET_OUT_TESTCASES ANDROID_BUILD_PATHS \
+      ANDROID_JAVA_HOME ANDROID_JAVA_TOOLCHAIN ANDROID_DEV_SCRIPTS \
+      OUT OUT_DIR TARGET_PRODUCT TARGET_BUILD_VARIANT TARGET_BOARD_PLATFORM \
+      TARGET_BUILD_TYPE TARGET_GCC_VERSION BUILD_ENV_SEQUENCE_NUMBER \
+      RECOMPILE_KERNEL RECOMPILE_ABL 2>/dev/null || true
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin
+
 fail() { echo "[jm2-kleaf] ERROR: $*" >&2; exit 1; }
 
 [ -d "$STOCK_MODULES_DIR" ] || fail "STOCK_MODULES_DIR not found: $STOCK_MODULES_DIR (external drive unmounted?)"
