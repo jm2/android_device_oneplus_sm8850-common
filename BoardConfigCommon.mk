@@ -61,15 +61,19 @@ BOARD_INCLUDE_RECOVERY_DTBO := true
 ifeq ($(USE_PREBUILT_KERNEL), true)
 BOARD_KERNEL_SEPARATED_DTBO := true
 else
-# OEM Kleaf source path: the dist ships dtbo.img already packed by the OEM build
-# from all 8 board/panel variant overlays -- richer than re-packing the 2 flat
-# .dtbo files kernel.mk's SEPARATED_DTBO rule would find. The adapter copies it
-# into KERNEL_OUT and a vendor/lineage rule publishes it at this path for
-# core/Makefile packaging + AVB signing (see kernel.mk "dist dtbo passthrough").
-# MUST be deferred (=): TARGET_OUT_INTERMEDIATES is still empty while BoardConfig
-# parses; an immediate := bakes in an absolute /KERNEL_OBJ/... path that panics
-# soong's glob walk (filepath.Rel hits "/"). All consumers expand it later.
-BOARD_PREBUILT_DTBOIMAGE = $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/dtbo-dist.img
+# OEM Kleaf source path: use the STOCK DT artifacts (same files the proven
+# prebuilt path flashes verbatim, and the same recipe the booting community ROM
+# uses). The OEM OSS devicetree is a bring-up SUBSET: its dtbo overlays carry
+# essentially no display/WLAN/audio nodes and its base DTBs are ~592 nodes
+# poorer -- a kernel booted on them can never light the panel (the 2026-06-10
+# "hard freeze" was this: boot-chain diff analysis in KLEAF_WIREUP_PLAN.md).
+# DT is configuration data, not KMI-coupled code, so stock DT + source kernel
+# is the correct pairing (analogous to the known-source-gaps module list).
+# NOTE: stock dtbo only applies onto the stock base DTBs (the OSS base lacks
+# e.g. the audio_gpr symbol stock overlays fix up against) -- these two MUST
+# stay a matched pair.
+BOARD_PREBUILT_DTBOIMAGE := device/oneplus/infiniti-kernel/images/dtbo.img
+BOARD_PREBUILT_DTBIMAGE_DIR := device/oneplus/infiniti-kernel/images
 endif
 
 # Filesystem
