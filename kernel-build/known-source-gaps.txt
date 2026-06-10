@@ -1,0 +1,40 @@
+# Stock-loaded modules with NO published source anywhere in the OEM Kleaf drop
+# (kernel-6.12 / OnePlusOSS oneplus/sm8850_b_16.0.0_oneplus_15) or the
+# OnePlus-SM8850-Development modules tree (which ships only an empty-stub
+# BUILD.bazel for ex_gpio). The source build cannot produce these; they are
+# tolerated by the coverage gate in build-canoe-kleaf.sh and skipped at staging
+# via BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING. Borrowing the stock prebuilt .ko
+# is NOT an option: stock vermagic (…-geb065695cf38-4k) != source kernel
+# (…-gd9053b907db4-4k), so they would refuse to load anyway.
+#
+# Risk notes (2026-06-09, vs live stock device):
+# - oplus_bsp_ex_gpio: AW951XX GPIO expander helper; loaded on stock with
+#   use-count 0. Only first-stage entry in this list.
+# - oplus_icc_mcu, oplus_network_* family: OnePlus value-add network
+#   optimizers + satellite-comm stack (HW not present on CPH2749 NA).
+# - atmel_mxt_ts / goodix_ts / st_fts / qts: per-panel touch leaves for OTHER
+#   variants; infiniti's panel is synaptics (oplus_touchscreen_v2 +
+#   synaptics_hbp ARE source-built). Stock loads these as probe-and-fail noops.
+# - qbt_handler: Qualcomm fingerprint; infiniti uses the oplus uff fp driver
+#   (source-built).
+oplus_bsp_ex_gpio.ko
+oplus_icc_mcu.ko
+oplus_network_702_satellite.ko
+oplus_network_dns_cache.ko
+oplus_network_dns_optimizer.ko
+oplus_network_fast_bwe.ko
+oplus_network_kernel_state_monitor.ko
+oplus_network_satellite.ko
+oplus_network_satellite_hl7603.ko
+oplus_network_satellite_rpc.ko
+oplus_network_satellite_rsmc.ko
+oplus_network_sched.ko
+oplus_network_sk_predict.ko
+oplus_network_snapshot.ko
+oplus_network_tcpdump_enhance.ko
+oplus_network_vip_task.ko
+atmel_mxt_ts.ko
+goodix_ts.ko
+st_fts.ko
+qts.ko
+qbt_handler.ko

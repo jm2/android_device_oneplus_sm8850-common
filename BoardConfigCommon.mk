@@ -56,14 +56,13 @@ BOARD_RAMDISK_USE_LZ4 := true
 TARGET_BOOTLOADER_BOARD_NAME := canoe
 
 # DTB / DTBO
+# Both the prebuilt path and the OEM Kleaf source path (via the vendor/lineage adapter)
+# consume flat *.dtb / *.dtbo artifacts -- prebuilt from infiniti-kernel, or copied from
+# the OEM dist into KERNEL_OUT -- so both use the separated-DTBO packaging. (The legacy
+# hand-Kbuild source path, now parked, was the only consumer of the QCOM merge_dtbs script.)
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
-ifeq ($(USE_PREBUILT_KERNEL), true)
 BOARD_INCLUDE_RECOVERY_DTBO := true
 BOARD_KERNEL_SEPARATED_DTBO := true
-else
-BOARD_USES_QCOM_MERGE_DTBS_SCRIPT := true
-TARGET_NEEDS_DTBOIMAGE := true
-endif
 
 # Filesystem
 TARGET_FS_CONFIG_GEN := $(COMMON_PATH)/config.fs
@@ -90,74 +89,53 @@ BOARD_USES_GENERIC_KERNEL_IMAGE := true
 
 TARGET_KERNEL_SOURCE := kernel/oneplus/sm8850
 ifneq ($(USE_PREBUILT_KERNEL), true)
-TARGET_KERNEL_ADDITIONAL_FLAGS := CONFIG_OPLUS_DEVICE_DTBS=y
-TARGET_KERNEL_CONFIG := \
-    gki_defconfig \
-    vendor/canoe_perf.config \
-    vendor/oplus/canoe_perf.config
+# --- OEM Kleaf source-kernel path (canoe_perf) -------------------------------
+# Builds the OEM's exact kernel from source via the reusable vendor/lineage
+# adapter (jm2 kernel.mk OEM-wrapper branch; see KLEAF_WIREUP_PLAN.md). This
+# supersedes the legacy hand-translated Kbuild wiring (TARGET_KERNEL_CONFIG +
+# TARGET_KERNEL_EXT_MODULES against kernel/oneplus/sm8850), which built a
+# wrong-base ACK kernel (KMI skew) and is intentionally parked in git history
+# / KLEAF_PIVOT.md. All of this lives inside !USE_PREBUILT_KERNEL, so the
+# default prebuilt build (which boots today) is untouched.
+TARGET_KERNEL_SOURCE := soc-repo
+TARGET_KERNEL_VERSION := 6.12
+TARGET_KERNEL_PLATFORM_TARGET := canoe_perf
 
-# Kernel modules
-BOARD_SYSTEM_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.system_dlkm.list.msm.canoe))
-BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(TARGET_KERNEL_SOURCE)/modules.vendor_blocklist.msm.canoe
-BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.vendor_dlkm.list.msm.canoe $(TARGET_KERNEL_SOURCE)/modules.vendor_dlkm.list.oplus.canoe))
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := $(BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.vendor_boot.list.msm.canoe $(TARGET_KERNEL_SOURCE)/modules.vendor_boot.list.oplus.canoe))
-BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(strip $(shell cat $(TARGET_KERNEL_SOURCE)/modules.recovery.list.msm.canoe $(TARGET_KERNEL_SOURCE)/modules.recovery.list.oplus.canoe))
-BOOT_KERNEL_MODULES := $(BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD)
-SYSTEM_KERNEL_MODULES := $(BOARD_SYSTEM_KERNEL_MODULES_LOAD)
+# OEM repo root (where .repo lives). The bazel workspace + build wrapper live
+# under it. This is the one per-sync-location knob -- env-overridable.
+TARGET_KERNEL_PLATFORM_ROOT ?= /run/media/jmulesa/lineage/android/kernel-6.12
+TARGET_KERNEL_PLATFORM_WORKSPACE_SUBDIR := kernel_platform
+# Build driver: a jm2 wrapper that runs the OEM kernel build AND builds the WLAN
+# DDK modules (cnss2 carries the byte-reversed-MAC WiFi fix; qcacld) against the
+# same canoe_perf kernel, strips them, and merges them into the kernel dist. The
+# OEM build alone excludes WLAN (build_with_bazel only builds soc-repo/define_canoe
+# targets). See kernel-build/build-canoe-kleaf.sh + KLEAF_WIREUP_PLAN.md Part C.
+TARGET_KERNEL_PLATFORM_BUILD_WRAPPER := $(abspath $(COMMON_PATH))/kernel-build/build-canoe-kleaf.sh
+TARGET_KERNEL_PLATFORM_BUILD_ARGS := canoe perf
+TARGET_KERNEL_PLATFORM_DIST := kernel_platform/out/msm-kernel-canoe-perf/dist
 
-TARGET_KERNEL_EXT_MODULE_ROOT := kernel/oneplus/sm8850-modules
-TARGET_KERNEL_EXT_MODULES := \
-    qcom/opensource/mmrm-driver \
-    qcom/opensource/mm-drivers/hw_fence \
-    qcom/opensource/mm-drivers/msm_ext_display \
-    qcom/opensource/mm-drivers/sync_fence \
-    qcom/opensource/securemsm-kernel \
-    qcom/opensource/audio-kernel \
-    qcom/opensource/synx-kernel \
-    qcom/opensource/camera-kernel \
-    qcom/opensource/datarmnet-ext/mem \
-    qcom/opensource/dataipa/drivers/platform/msm \
-    qcom/opensource/datarmnet/core \
-    qcom/opensource/datarmnet-ext/aps \
-    qcom/opensource/datarmnet-ext/offload \
-    qcom/opensource/datarmnet-ext/shs \
-    qcom/opensource/datarmnet-ext/perf \
-    qcom/opensource/datarmnet-ext/perf_tether \
-    qcom/opensource/datarmnet-ext/sch \
-    qcom/opensource/datarmnet-ext/wlan \
-    qcom/opensource/display-drivers/msm \
-    qcom/opensource/dsp-kernel \
-    qcom/opensource/eva-kernel \
-    qcom/opensource/video-driver \
-    qcom/opensource/graphics-kernel \
-    qcom/opensource/wlan/platform \
-    qcom/opensource/wlan/qcacld-3.0/.kiwi_v2 \
-    qcom/opensource/wlan/qcacld-3.0/.qca6750 \
-    qcom/opensource/bt-kernel \
-    qcom/opensource/spu-kernel \
-    qcom/opensource/mm-sys-kernel/ubwcp \
-    nxp/opensource/driver
+# Module load lists: STOCK parity. These are the exact lists the proven prebuilt
+# path uses (device/oneplus/infiniti-kernel/modules/*, extracted from the stock
+# OTA) -- load membership AND order match the booting stock configuration; only
+# the .ko provenance changes (source-built dist instead of OEM prebuilts). The
+# build wrapper (kernel-build/build-canoe-kleaf.sh) delivers the full module set
+# flat into the dist (kernel + all //vendor techpack DDK + GKI system_dlkm) and
+# reports coverage against these same lists. .ko are flat in KERNEL_OUT, so the
+# staged-set vars use basenames. Mirrors infiniti-kernel/BoardConfig.mk: the
+# staged first-stage set is the recovery list (a superset of the normal list).
+SM8850_STOCK_MODULES_PATH := device/oneplus/infiniti-kernel/modules
+BOARD_SYSTEM_KERNEL_MODULES_LOAD := $(strip $(shell cat $(SM8850_STOCK_MODULES_PATH)/system_dlkm/modules.load 2>/dev/null))
+BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(SM8850_STOCK_MODULES_PATH)/vendor_dlkm/modules.load 2>/dev/null))
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(SM8850_STOCK_MODULES_PATH)/vendor_dlkm/modules.blocklist
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/modules.load 2>/dev/null))
+BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(strip $(shell cat $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/modules.load.recovery 2>/dev/null))
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/modules.blocklist
+BOOT_KERNEL_MODULES := $(sort $(notdir $(BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD)))
+SYSTEM_KERNEL_MODULES := $(notdir $(BOARD_SYSTEM_KERNEL_MODULES_LOAD))
 
-TARGET_KERNEL_EXT_MODULES += \
-    oplus/hardware/radio/kernel/mdmfeature:kbuild \
-    oplus/kernel/cpu/thermal:kbuild \
-    oplus/kernel/device_info/pogo_keyboard:kbuild \
-    oplus/kernel/device_info/tri_state_key:kbuild \
-    oplus/kernel/dfr:kbuild \
-    oplus/kernel/graphics:kbuild \
-    oplus/kernel/network/oplus_network_oem_qmi:kbuild \
-    oplus/kernel/network/oplus_network_esim:kbuild \
-    oplus/kernel/network/oplus_network_sim_detect:kbuild \
-    oplus/kernel/network/oplus_rf_cable_monitor:kbuild \
-    oplus/kernel/touchpanel/oplus_touchscreen_v2/touch_custom:kbuild \
-    oplus/kernel/touchpanel/oplus_touchscreen_v2:kbuild \
-    oplus/kernel/touchpanel/synaptics_hbp:kbuild \
-    oplus/kernel/tp/hbp/hbp:kbuild \
-    oplus/secure/biometrics/fingerprints/bsp/uff/driver:kbuild \
-    oplus/secure/common/bsp/drivers/oplus_secure_common \
-    oplus/sensor/kernel/oplus_consumer_ir:kbuild \
-    oplus/sensor/kernel/qcom/sensor:kbuild
+# Stock lists may name a few modules this build doesn't produce yet; warn instead
+# of hard-failing the build on a missing load-list entry (jm2 kernel.mk patch 4).
+BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING := true
 endif
 
 # Metadata
