@@ -68,6 +68,30 @@ fail() { echo "[jm2-kleaf] ERROR: $*" >&2; exit 1; }
 
 [ -d "$STOCK_MODULES_DIR" ] || fail "STOCK_MODULES_DIR not found: $STOCK_MODULES_DIR (external drive unmounted?)"
 
+# --- Apply jm2 out-of-tree patches to the OEM source (durable WiFi fix etc.) ---
+# The OEM android_kernel_modules_and_devicetree repo is read-only HTTPS and is not
+# in our manifest, so source edits can't be committed there and a re-sync wipes
+# them. We version the diffs under the device tree and replay them here, before the
+# build, so fresh checkouts reproduce the fix. Idempotent: a patch already present
+# (reverse-applies) is skipped; a pristine tree is patched; anything else (OEM
+# drift) fails loudly. cwd is the OEM repo root (a git work tree). The cnss2
+# byte-reversed-WLAN-MAC fix (project_jun03_wifi_softsku_rootcause) lives here.
+PATCH_DIR="$SCRIPT_DIR/../patches/oem-kernel-modules"
+if [ -d "$PATCH_DIR" ]; then
+  shopt -s nullglob
+  for p in "$PATCH_DIR"/*.patch; do
+    name="$(basename "$p")"
+    if git apply --reverse --check -p1 "$p" >/dev/null 2>&1; then
+      echo "[jm2-kleaf] OEM patch already applied: $name"
+    elif git apply -p1 "$p" >/dev/null 2>&1; then
+      echo "[jm2-kleaf] OEM patch applied: $name"
+    else
+      fail "OEM patch neither applies nor is already applied (OEM tree drift?): $name"
+    fi
+  done
+  shopt -u nullglob
+fi
+
 echo "[jm2-kleaf] === 1/4 OEM kernel build ($TV) ==="
 # The OEM scripts pipe through tee with no pipefail (their exit code is
 # meaningless) and a fully-cached rebuild rewrites NO dist files (so mtime
