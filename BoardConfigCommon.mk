@@ -56,13 +56,21 @@ BOARD_RAMDISK_USE_LZ4 := true
 TARGET_BOOTLOADER_BOARD_NAME := canoe
 
 # DTB / DTBO
-# Both the prebuilt path and the OEM Kleaf source path (via the vendor/lineage adapter)
-# consume flat *.dtb / *.dtbo artifacts -- prebuilt from infiniti-kernel, or copied from
-# the OEM dist into KERNEL_OUT -- so both use the separated-DTBO packaging. (The legacy
-# hand-Kbuild source path, now parked, was the only consumer of the QCOM merge_dtbs script.)
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_INCLUDE_RECOVERY_DTBO := true
+ifeq ($(USE_PREBUILT_KERNEL), true)
 BOARD_KERNEL_SEPARATED_DTBO := true
+else
+# OEM Kleaf source path: the dist ships dtbo.img already packed by the OEM build
+# from all 8 board/panel variant overlays -- richer than re-packing the 2 flat
+# .dtbo files kernel.mk's SEPARATED_DTBO rule would find. The adapter copies it
+# into KERNEL_OUT and a vendor/lineage rule publishes it at this path for
+# core/Makefile packaging + AVB signing (see kernel.mk "dist dtbo passthrough").
+# MUST be deferred (=): TARGET_OUT_INTERMEDIATES is still empty while BoardConfig
+# parses; an immediate := bakes in an absolute /KERNEL_OBJ/... path that panics
+# soong's glob walk (filepath.Rel hits "/"). All consumers expand it later.
+BOARD_PREBUILT_DTBOIMAGE = $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/dtbo-dist.img
+endif
 
 # Filesystem
 TARGET_FS_CONFIG_GEN := $(COMMON_PATH)/config.fs
@@ -104,12 +112,11 @@ TARGET_KERNEL_PLATFORM_TARGET := canoe_perf
 # OEM repo root (where .repo lives). The bazel workspace + build wrapper live
 # under it. This is the one per-sync-location knob -- env-overridable.
 TARGET_KERNEL_PLATFORM_ROOT ?= /run/media/jmulesa/lineage/android/kernel-6.12
-TARGET_KERNEL_PLATFORM_WORKSPACE_SUBDIR := kernel_platform
-# Build driver: a jm2 wrapper that runs the OEM kernel build AND builds the WLAN
-# DDK modules (cnss2 carries the byte-reversed-MAC WiFi fix; qcacld) against the
-# same canoe_perf kernel, strips them, and merges them into the kernel dist. The
-# OEM build alone excludes WLAN (build_with_bazel only builds soc-repo/define_canoe
-# targets). See kernel-build/build-canoe-kleaf.sh + KLEAF_WIREUP_PLAN.md Part C.
+# Build driver: a jm2 wrapper that runs the OEM kernel build AND builds every
+# //vendor/... canoe_perf DDK dist target against the same kernel_build (the OEM
+# build alone covers only soc-repo/define_canoe -- no WLAN/display/audio/...),
+# strips and merges everything into the kernel dist, and gates coverage against
+# the stock load lists. See kernel-build/build-canoe-kleaf.sh + KLEAF_WIREUP_PLAN.md.
 TARGET_KERNEL_PLATFORM_BUILD_WRAPPER := $(abspath $(COMMON_PATH))/kernel-build/build-canoe-kleaf.sh
 TARGET_KERNEL_PLATFORM_BUILD_ARGS := canoe perf
 TARGET_KERNEL_PLATFORM_DIST := kernel_platform/out/msm-kernel-canoe-perf/dist
@@ -130,7 +137,12 @@ BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(SM8850_STOCK_MODULES_PATH)/vendo
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/modules.load 2>/dev/null))
 BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD := $(strip $(shell cat $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/modules.load.recovery 2>/dev/null))
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/modules.blocklist
-BOOT_KERNEL_MODULES := $(sort $(notdir $(BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD)))
+# Staged first-stage set = the whole stock vendor_ramdisk DIRECTORY (mirrors the
+# prebuilt path's $(wildcard ...) semantics), NOT just the load lists: stock
+# stages dependency-only modules the lists never name (e.g. hdcp_qseecom_dlkm,
+# which msm_drm needs at depmod/insmod time). Missing-from-dist names are
+# skipped with a warning by kernel.mk under ALLOW_MISSING (jm2 patch 6).
+BOOT_KERNEL_MODULES := $(sort $(notdir $(wildcard $(SM8850_STOCK_MODULES_PATH)/vendor_ramdisk/*.ko)))
 SYSTEM_KERNEL_MODULES := $(notdir $(BOARD_SYSTEM_KERNEL_MODULES_LOAD))
 
 # Stock lists may name a few modules this build doesn't produce yet; warn instead
