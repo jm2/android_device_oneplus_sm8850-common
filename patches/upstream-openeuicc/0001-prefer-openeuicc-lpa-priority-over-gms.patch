@@ -1,0 +1,17 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index ea7562e..4d063a7 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -38,7 +38,11 @@
+             android:name=".service.OpenEuiccService"
+             android:exported="true"
+             android:permission="android.permission.BIND_EUICC_SERVICE">
+-            <intent-filter android:priority="100">
++            <!-- jm2: priority 500 (> Google EuiccGoogle's 100) so the framework's
++                 EuiccConnector.findBestComponent binds OpenEUICC as the system LPA
++                 even when com.google.android.euicc is enabled (e.g. on a GMS build).
++                 At equal priority the selection is order-dependent and Google can win. -->
++            <intent-filter android:priority="500">
+                 <action android:name="android.service.euicc.EuiccService" />
+             </intent-filter>
+         </service>

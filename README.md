@@ -278,6 +278,30 @@ references are gone.
 (eUICC `SW=6A88` at `LoadBoundProfilePackage`) — see `kernel/oneplus/sm8850-modules/DEFERRED_FOLLOWUPS.md`
 ("eSIM provisioning fails at LoadBoundProfilePackage"). High-priority follow-up after kernel + WiFi.
 
+### Preferring OpenEUICC over EuiccGoogle on a GMS build
+
+On the current **no-GMS** build EuiccDisabler keeps `com.google.android.euicc` disabled, so
+OpenEUICC is the sole `EuiccService` and "default" is moot. **On a GMS build it is NOT** — EuiccDisabler
+*enables* EuiccGoogle precisely when `com.google.android.gms` is installed+enabled
+(`EUICC_DEPENDENCIES`), and then the framework chooses the LPA by **intent-filter priority**:
+`EuiccConnector.findBestComponent` (frameworks/opt/telephony) binds the highest-priority valid,
+privileged (`WRITE_EMBEDDED_SUBSCRIPTIONS` + `BIND_EUICC_SERVICE`), non-zero-priority `EuiccService`.
+Verified on device: **both** OpenEUICC's `OpenEuiccService` and Google's `EuiccServiceImpl` declare
+that filter at **`priority=100`** — a tie, and the comparison is strict `>`, so on a tie the first in
+(unstable) scan order wins → **Google can silently become the LPA on any boot.**
+
+**Fix (staged, applies cleanly; pending a GMS build to validate end-to-end):** raise OpenEUICC's
+`EuiccService` filter priority to **500** (> Google's 100) so OpenEUICC always wins the binding while
+EuiccGoogle stays installed as a lower-priority fallback — no need to disable it, no fight with
+EuiccDisabler. Patch: `patches/upstream-openeuicc/0001-prefer-openeuicc-lpa-priority-over-gms.patch`
+(one-line `android:priority` bump in `OpenEUICC/app/src/main/AndroidManifest.xml`; already applied in
+the working tree). **Wiring TODO** (OpenEUICC is a Soong-built upstream clone with no per-app build
+wrapper to hook patch-replay into, unlike the kernel WLAN fix): when we ship a GMS build, either
+(a) fork `estkme-group/OpenEUICC` → jm2, commit the bump, re-point the local_manifest; or (b) add a
+general pre-brunch patch-replay step over `packages/apps/OpenEUICC`. Validate with
+`dumpsys package com.google.android.euicc | grep -A2 EuiccService` (Google=100) vs OpenEUICC=500, and
+confirm `EuiccConnector` binds `OpenEuiccService` with EuiccGoogle enabled.
+
 ## Hybrid module set (post-Phase F)
 
 | What | Where it comes from |
