@@ -497,5 +497,16 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml
 
+# WiFi cfg.ini reachability (source-build fix).
+# The source-built qcacld driver loads its INI via request_firmware("wlan/WCNSS_qcom_cfg.ini"),
+# which only searches the kernel firmware_class path list. On a stock build the qcacld Android.mk
+# creates a symlink to the INI under TARGET_FW_PATH; we build WLAN as a Kleaf/Bazel DDK module, so
+# that Android.mk rule never runs and the INI is unreachable -> wlan0 is never created on a clean
+# boot (confirmed live 2026-06-10). Ship the INI under a firmware-search dir (/vendor/firmware/wlan)
+# and point firmware_class.path at /vendor/firmware via BOARD_BOOTCONFIG (BoardConfigCommon.mk).
+# Blob is the exact stock /odm/vendor/etc/wifi copy (sha256 65b28a36...).
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/configs/wifi/WCNSS_qcom_cfg.ini:$(TARGET_COPY_OUT_VENDOR)/firmware/wlan/WCNSS_qcom_cfg.ini
+
 # Inherit from the proprietary files makefile.
 $(call inherit-product, vendor/oneplus/sm8850-common/sm8850-common-vendor.mk)

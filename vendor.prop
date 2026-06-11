@@ -264,7 +264,13 @@ persist.radio.multisim.config=dsds
 persist.vendor.radio.apm_sim_not_pwdn=1
 persist.vendor.radio.custom_ecc=1
 persist.vendor.radio.enableadvancedscan=true
-persist.vendor.radio.procedure_bytes=SKIP
+# eSIM fix: SKIP re-frames transparent-APDU procedure bytes and desyncs the ES10b STORE DATA
+# chain at LoadBoundProfilePackage -> bare SW=6A88 on the 2nd InitialiseSecureChannel block
+# (project_jun09_esim_6a88_investigation). RETURN passes the real procedure byte through to the
+# LPA so the chain stays in sync. qcrilNr reads this at RIL init, so it MUST be a build/persist
+# default (a runtime setprop after boot is ignored) -- and a userdata wipe erases the persisted
+# value, so SKIP would otherwise resurface. Stock sets neither; this is our choice.
+persist.vendor.radio.procedure_bytes=RETURN
 persist.vendor.radio.sib16_support=1
 ro.telephony.default_network=26,26
 

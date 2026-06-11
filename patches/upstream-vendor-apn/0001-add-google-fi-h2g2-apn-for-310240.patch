@@ -1,0 +1,35 @@
+diff --git a/US.xml b/US.xml
+index e7562b6..efe5598 100644
+--- a/US.xml
++++ b/US.xml
+@@ -1017,6 +1017,30 @@
+         server="*"
+         user="none"
+     />
++    <!-- jm2: Google Fi on the T-Mobile 310240 host. Upstream apns-conf only carries Fi for 310260,
++         but this device's Fi eSIM reports home PLMN 310240 (gsm.sim.operator.numeric). On 310240 the
++         only entries are GID1-matched MVNOs (Mint/Ting/US Mobile/tello); a Fi SIM matches none of
++         those GIDs, so with no default 310240 APN no data PDP comes up. These non-MVNO entries are
++         the 310240 fallback so Fi gets h2g2. IPV4V6 (not the 310260 IPV6/IP) for reliable roaming
++         data. Verified live 2026-06-10: LTE data on China Mobile roaming, ping 8.8.8.8 0% loss. -->
++    <apn
++        mcc="310"
++        mnc="240"
++        carrier="Google Fi"
++        apn="h2g2"
++        protocol="IPV4V6"
++        roaming_protocol="IPV4V6"
++        type="ia"
++    />
++    <apn
++        mcc="310"
++        mnc="240"
++        carrier="Google Fi"
++        apn="h2g2"
++        mmsc="http://mmsc1.g-mms.com/mms/wapenc"
++        protocol="IPV4V6"
++        roaming_protocol="IPV4V6"
++    />
+     <apn
+         mcc="310"
+         mnc="260"

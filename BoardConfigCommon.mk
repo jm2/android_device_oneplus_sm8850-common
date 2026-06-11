@@ -94,6 +94,17 @@ BOARD_BOOTCONFIG := \
     androidboot.usbcontroller=a600000.dwc3 \
     androidboot.vendor.qspa=true
 
+# WiFi cfg.ini reachability (source-build fix). The source-built qcacld driver loads
+# WCNSS_qcom_cfg.ini via request_firmware("wlan/WCNSS_qcom_cfg.ini"), which searches the kernel
+# firmware_class path list. By default fw_path_para[] is empty (OEM kernel main.c) so the INI is
+# never found and wlan0 is not created. The "kernel" bootconfig subtree is emitted onto the kernel
+# command line by init/main.c (xbc_make_cmdline("kernel")), so this sets the firmware_class.path
+# module param at boot (before any module loads) with no sepolicy/init.rc write needed. We ship the
+# INI under /vendor/firmware/wlan (see common.mk PRODUCT_COPY_FILES). Confirmed live 2026-06-10:
+# staging the INI here + setting this path brings wlan0 up with the correct unicast MAC.
+BOARD_BOOTCONFIG += \
+    kernel.firmware_class.path=/vendor/firmware
+
 BOARD_KERNEL_BASE := 0x00000000
 BOARD_KERNEL_IMAGE_NAME := Image
 BOARD_KERNEL_PAGESIZE := 4096

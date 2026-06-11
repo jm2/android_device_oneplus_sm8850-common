@@ -42,8 +42,11 @@ describes the **kernel/dtb** build is orthogonal to the convergence and still cu
 > Image + vmlinux + boot.img + 449 `.ko` + canoe DTBs with the matching **clang-r536225**. This
 > dissolves the KMI-skew that blocked the Kbuild route. Full record:
 > `kernel/oneplus/sm8850-modules/KLEAF_PIVOT.md`. The Kbuild-era notes below are kept as historical
-> record but are **superseded**. Working default stays `USE_PREBUILT_KERNEL=true` (prebuilt; device
-> boots today) until the source kernel is wired + flash-verified (cnss2 WiFi MAC patch pending).
+> record but are **superseded**. As of 2026-06-10 the source-kernel build path is wired end-to-end:
+> it boots, the cnss2 byte-reversed-WLAN-MAC fix is carried as a patch, and the cfg.ini reachability
+> gap that kept `wlan0` from coming up is fixed (see the WiFi section below). Build it with
+> `iter_brunch.sh <tag> "" source` (`USE_PREBUILT_KERNEL=false`); the prebuilt path remains the
+> fallback default.
 
 The kernel-build configuration needed to drive the source-built kernel + hybrid
 prebuilt module set. In commit order on the original tree:
@@ -274,11 +277,14 @@ references are gone.
   reflash (`PRODUCT_PACKAGES` covers reflash). Verified: `EuiccConnector=ConnectedState` bound to
   `OpenEuiccService`, lpac loads, eUICC read OK (empty profile list).
 
-**Status:** menu + LPA fully functional. Profile **provisioning is blocked at the on-chip write**
-(eUICC `SW=6A88` at `LoadBoundProfilePackage`) — see `kernel/oneplus/sm8850-modules/DEFERRED_FOLLOWUPS.md`
-("eSIM provisioning fails at LoadBoundProfilePackage"). High-priority follow-up after kernel + WiFi.
+**Status:** menu + LPA functional; **provisioning works** end-to-end (download + enable + modem load).
+The earlier `SW=6A88` block at `LoadBoundProfilePackage` was `persist.vendor.radio.procedure_bytes=SKIP`
+desyncing the ES10b STORE DATA chain; the fix is `=RETURN`, **now baked in `vendor.prop`** (qcril reads
+it at RIL init, so it must be a build/persist default — a runtime setprop after boot is ignored, and a
+userdata wipe erases any persisted value). See `kernel/oneplus/sm8850-modules/DEFERRED_FOLLOWUPS.md`
+and the Jun-09/Jun-10 memories for the full APDU trace.
 
-### Preferring OpenEUICC over EuiccGoogle on a GMS build
+### OpenEUICC vs EuiccGoogle LPA selection (GMS build)
 
 On the current **no-GMS** build EuiccDisabler keeps `com.google.android.euicc` disabled, so
 OpenEUICC is the sole `EuiccService` and "default" is moot. **On a GMS build it is NOT** — EuiccDisabler
@@ -288,19 +294,52 @@ OpenEUICC is the sole `EuiccService` and "default" is moot. **On a GMS build it 
 privileged (`WRITE_EMBEDDED_SUBSCRIPTIONS` + `BIND_EUICC_SERVICE`), non-zero-priority `EuiccService`.
 Verified on device: **both** OpenEUICC's `OpenEuiccService` and Google's `EuiccServiceImpl` declare
 that filter at **`priority=100`** — a tie, and the comparison is strict `>`, so on a tie the first in
-(unstable) scan order wins → **Google can silently become the LPA on any boot.**
+(unstable) scan order wins → **either can become the LPA depending on scan order.**
 
-**Fix (staged, applies cleanly; pending a GMS build to validate end-to-end):** raise OpenEUICC's
-`EuiccService` filter priority to **500** (> Google's 100) so OpenEUICC always wins the binding while
-EuiccGoogle stays installed as a lower-priority fallback — no need to disable it, no fight with
-EuiccDisabler. Patch: `patches/upstream-openeuicc/0001-prefer-openeuicc-lpa-priority-over-gms.patch`
-(one-line `android:priority` bump in `OpenEUICC/app/src/main/AndroidManifest.xml`; already applied in
-the working tree). **Wiring TODO** (OpenEUICC is a Soong-built upstream clone with no per-app build
-wrapper to hook patch-replay into, unlike the kernel WLAN fix): when we ship a GMS build, either
-(a) fork `estkme-group/OpenEUICC` → jm2, commit the bump, re-point the local_manifest; or (b) add a
-general pre-brunch patch-replay step over `packages/apps/OpenEUICC`. Validate with
-`dumpsys package com.google.android.euicc | grep -A2 EuiccService` (Google=100) vs OpenEUICC=500, and
-confirm `EuiccConnector` binds `OpenEuiccService` with EuiccGoogle enabled.
+**Decision (2026-06-10): keep OpenEUICC at the upstream/stock `priority=100`** — do *not* force it
+above EuiccGoogle. The earlier 500 bump (and its captured patch) was reverted at the user's request;
+we want stock behaviour with GMS present. Consequence: with GMS installed+enabled, EuiccGoogle is
+re-enabled by EuiccDisabler and the LPA binding is a 100-vs-100 tie resolved by scan order — Google
+may win on a given boot. If a future build needs OpenEUICC to deterministically win again, re-bump
+its `EuiccService` filter priority (manifest `android:priority`), or disable
+`com.google.android.euicc` specifically (the rest of GMS works without it). Validate which LPA is
+bound with `dumpsys euicc` / `dumpsys package com.google.android.euicc | grep -A2 EuiccService`.
+
+## WiFi (source kernel) — cfg.ini reachability
+
+The source-built `cnss2` byte-reversed-WLAN-MAC fix is carried as a kernel patch
+(`kernel-build/patches/oem-kernel-modules/0001-cnss2-byte-reversed-wlan-mac-fix.patch`), but on the
+**source-kernel** build `wlan0` still wasn't created on a clean boot. Root cause: source-built qcacld
+loads `WCNSS_qcom_cfg.ini` via `request_firmware("wlan/WCNSS_qcom_cfg.ini")`, which searches only the
+kernel `firmware_class` path list. The OEM kernel's `fw_path_para[]` is empty by default and nothing
+sets `firmware_class.path` (stock sets it nowhere in its boot images either). On a stock build the
+qcacld **Android.mk** creates a symlink to the INI under `TARGET_FW_PATH`; we build WLAN as a
+**Kleaf/Bazel DDK**, so that rule never runs → the INI is unreachable.
+
+**Fix (2 parts, no sepolicy / no init.rc sysfs write):**
+1. `common.mk` ships the INI (committed at `configs/wifi/WCNSS_qcom_cfg.ini`, == the stock
+   `/odm/vendor/etc/wifi` copy) to `/vendor/firmware/wlan/WCNSS_qcom_cfg.ini` (a firmware-search dir,
+   label `vendor_firmware_file`, kernel-readable).
+2. `BoardConfigCommon.mk` adds `BOARD_BOOTCONFIG += kernel.firmware_class.path=/vendor/firmware`. The
+   bootconfig `kernel` subtree is emitted onto the kernel command line by `init/main.c`
+   (`xbc_make_cmdline("kernel")`), so the module param is set at boot before any module loads.
+
+Confirmed live (2026-06-10): staging the INI + setting `firmware_class.path` + reloading
+`qca_cld3_peach_v2` brought `wlan0` up with the correct **unicast** MAC. **Post-flash verify:**
+`cat /proc/cmdline | tr ' ' '\n' | grep firmware_class` shows `/vendor/firmware`, and `wlan0` exists
+on a clean boot (no runtime hack).
+
+## Cellular / Google Fi APN
+
+Google Fi data (LTE/5G) did not come up even after the eSIM associated (registered, roaming). Cause:
+the Fi eSIM's home PLMN is **310240** (`gsm.sim.operator.numeric`), but upstream `apns-conf.xml` only
+carries the Fi `h2g2` APN for **310260**. On 310240 the only entries are GID1-matched MVNOs
+(Mint/Ting/US Mobile/tello); a Fi SIM matches none → no default APN → no PDP context. **The RF/modem
+were never broken** (it registered on China Mobile LTE roaming fine). Fix: two non-MVNO Fi `h2g2`
+entries (`mcc=310 mnc=240`, `ia` + default, `IPV4V6`) added to `vendor/apn/US.xml` (the per-country
+source the `apns-conf` genrule concatenates). Verified live: LTE data on China Mobile roaming,
+`ping 8.8.8.8` 0% loss. NOTE: `vendor/apn` is a LineageOS upstream repo (no jm2 fork); the change is
+committed locally and captured as a replay patch under `patches/` here.
 
 ## Hybrid module set (post-Phase F)
 
