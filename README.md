@@ -335,11 +335,12 @@ Google Fi data (LTE/5G) did not come up even after the eSIM associated (register
 the Fi eSIM's home PLMN is **310240** (`gsm.sim.operator.numeric`), but upstream `apns-conf.xml` only
 carries the Fi `h2g2` APN for **310260**. On 310240 the only entries are GID1-matched MVNOs
 (Mint/Ting/US Mobile/tello); a Fi SIM matches none → no default APN → no PDP context. **The RF/modem
-were never broken** (it registered on China Mobile LTE roaming fine). Fix: two non-MVNO Fi `h2g2`
-entries (`mcc=310 mnc=240`, `ia` + default, `IPV4V6`) added to `vendor/apn/US.xml` (the per-country
-source the `apns-conf` genrule concatenates). Verified live: LTE data on China Mobile roaming,
-`ping 8.8.8.8` 0% loss. NOTE: `vendor/apn` is a LineageOS upstream repo (no jm2 fork); the change is
-committed locally and captured as a replay patch under `patches/` here.
+were never broken** (it registered on China Mobile LTE roaming fine). Fix: Fi (`carrier_id 1989`) is
+identified on the `310240` host by **GID1 `4276`** (`carrier_list.textpb`) — the same GID it already
+uses on `310260` — so add `ia` + default `h2g2` entries (`mvno_type=gid`, `mvno_match_data=4276`,
+`IPV4V6`) to `vendor/apn/US.xml`. Verified live: LTE data on China Mobile roaming, `ping 8.8.8.8` 0%
+loss. `vendor/apn` is LineageOS upstream — forked to **`jm2/android_vendor_apn`** (branch
+`jm2-fi-apn-310240`, PR-ready against `main`) and mirrored as a replay patch under `patches/` here.
 
 ## Hybrid module set (post-Phase F)
 
