@@ -117,6 +117,17 @@ done
 mapfile -t KOPTS < <(sed "s|%workspace%|$KP|g" "$DIST/build_opts.txt" | sort -u | grep -v '^$')
 [ "${#KOPTS[@]}" -gt 0 ] || fail "no bazel opts parsed from build_opts.txt"
 
+# camera-kernel is the ONE vendor techpack that gates its per-SoC config behind a
+# bazel string_flag (//vendor/qcom/opensource/camera-kernel:project_name, default
+# "none" -> the :no_project select branch -> CONFIG_TARGET_SYNX_ENABLE and the other
+# canoe dependency_config flags are NEVER applied). The OEM's own build sets it in a
+# camera build path that build_with_bazel.py excludes (//vendor DDKs) and we replace,
+# so WE must set it. Without it camera.ko ships with synx HW-fence support compiled
+# out -> the stock CamX HAL's SYNX_OBJ (0x3) fence is rejected -> camxhal3 SIGABRT ->
+# camera totally dead (project_jun11_camera_synx_rootcause). Only camera-kernel reads
+# this flag, so it is harmless to the other ~79 vendor targets.
+KOPTS+=( "--//vendor/qcom/opensource/camera-kernel:project_name=${PLATFORM}" )
+
 # Unpack the GKI system_dlkm staging archive once (used for the zram-collision
 # resolution below and the GKI merge in step 3).
 GKI_TMP="$(mktemp -d)" || fail "mktemp -d failed"
